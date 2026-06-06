@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"net"
+	"time"
+
+	"github.com/Twahaaa/godis/client"
 )
 
 const defaultListenAddr = ":5001"
@@ -99,7 +103,19 @@ func (s *Server) handleCon(conn net.Conn){
 }
 
 func main() {
-	server := NewServer(Config{})
-	log.Fatal(server.Start())
+	go func(){
+		server := NewServer(Config{})
+		log.Fatal(server.Start())
+	}()
 
+	time.Sleep(time.Second)
+
+	for i:=0;i<10;i++{
+		client := client.New("localhost:5001")
+		if err := client.Set(context.TODO(),"foo","bar"); err!=nil{
+			log.Fatal(err)
+		}
+	}
+	
+	time.Sleep(time.Second)
 }
