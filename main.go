@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -66,8 +65,16 @@ func (s *Server) loop() {
 }
 
 func (s *Server) handleRawMessage(rawMsg []byte) error{
-	fmt.Println(string(rawMsg))
-	return nil
+	cmd, err := parseCommand(string(rawMsg))
+	if err != nil{
+		return err
+	}
+	switch v := cmd.(type){
+	case SetCommand:
+		slog.Info("somebody wants to set a key into the hashtable","key", v.key, "val", v.val)
+	}
+
+	return nil 
 }
 
 func (s *Server) acceptLoop() error{
