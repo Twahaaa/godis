@@ -68,6 +68,8 @@ func (s *Server) loop() {
 	}
 }
 
+
+
 func (s *Server) handleRawMessage(rawMsg []byte) error{
 	cmd, err := parseCommand(string(rawMsg))
 	if err != nil{
@@ -76,6 +78,7 @@ func (s *Server) handleRawMessage(rawMsg []byte) error{
 	switch v := cmd.(type){
 	case SetCommand:
 		slog.Info("somebody wants to set a key into the hashtable","key", v.key, "val", v.val)
+		// return s.Set(v.key,v.val)
 	}
 
 	return nil 
