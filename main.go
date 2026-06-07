@@ -96,7 +96,7 @@ func (s *Server) handleMessage(msg Message) error {
 		
 		val , ok := s.kv.Get(v.key)
 		if !ok{
-			slog.Error("could not find key", v.key)
+			slog.Error("could not find key", "key", v.key)
 		}
 		_, err := msg.peer.Send(val)
 		if err != nil {
