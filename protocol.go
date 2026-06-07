@@ -16,7 +16,7 @@ type Command interface {
 }
 
 type SetCommand struct {
-	key, val string
+	key, val []byte
 }
 
 func parseCommand(msg string) (Command, error) {
@@ -37,8 +37,8 @@ func parseCommand(msg string) (Command, error) {
 							return nil, fmt.Errorf("invalid number of variables for SET commands")
 						}
 						cmd := SetCommand{
-							key: v.Array()[1].String(),
-							val: v.Array()[2].String(),
+							key: v.Array()[1].Bytes(),
+							val: v.Array()[2].Bytes(),
 						}
 					return cmd, nil
 				}

@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Twahaaa/godis/client"
@@ -18,107 +22,115 @@ type Config struct {
 
 type Server struct {
 	Config
-	peers map[*Peer] bool
-	ln net.Listener
+	peers     map[*Peer]bool
+	ln        net.Listener
 	addPeerCh chan *Peer
-	quitCh chan struct{}
-	msgCh chan []byte
+	quitCh    chan struct{}
+	msgCh     chan []byte
+
+	kv *KV
 }
 
-func NewServer(cfg Config) *Server{
-	if len(cfg.ListenAddr) == 0{
+func NewServer(cfg Config) *Server {
+	if len(cfg.ListenAddr) == 0 {
 		cfg.ListenAddr = defaultListenAddr
 	}
 	return &Server{
-		Config: cfg,
-		peers: make(map[*Peer]bool),
+		Config:    cfg,
+		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
-		quitCh: make(chan struct{}),
-		msgCh: make(chan []byte),
+		quitCh:    make(chan struct{}),
+		msgCh:     make(chan []byte),
+		kv:        NewKV(),
 	}
 }
 
-func (s *Server) Start () error{
+func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", s.ListenAddr)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	s.ln = ln
-	
+
 	go s.loop()
 
 	slog.Info("server running", "listernAddr", s.ListenAddr)
 
 	return s.acceptLoop()
-} 
+}
 
 func (s *Server) loop() {
 	for {
-		select{
+		select {
 		case peer := <-s.addPeerCh:
 			s.peers[peer] = true
 
 		case rawMsg := <-s.msgCh:
-			if err := s.handleRawMessage(rawMsg); err!=nil{
+			if err := s.handleRawMessage(rawMsg); err != nil {
 				slog.Error("raw message error", "err:", err)
 			}
 		case <-s.quitCh:
-			return 
+			slog.Info("The Server is being shut down gracefuly")
+			return
 		}
 	}
 }
 
-
-
-func (s *Server) handleRawMessage(rawMsg []byte) error{
+func (s *Server) handleRawMessage(rawMsg []byte) error {
 	cmd, err := parseCommand(string(rawMsg))
-	if err != nil{
+	if err != nil {
 		return err
 	}
-	switch v := cmd.(type){
+	switch v := cmd.(type) {
 	case SetCommand:
-		slog.Info("somebody wants to set a key into the hashtable","key", v.key, "val", v.val)
-		// return s.Set(v.key,v.val)
+		slog.Info("somebody wants to set a key into the hashtable", "key", v.key, "val", v.val)
+		return s.kv.Set(v.key, v.val)
 	}
 
-	return nil 
+	return nil
 }
 
-func (s *Server) acceptLoop() error{
+func (s *Server) acceptLoop() error {
 	for {
 		conn, err := s.ln.Accept()
-		if err != nil{
-			slog.Error("accept errror","err",err)
+		if err != nil {
+			slog.Error("accept errror", "err", err)
 			continue
 		}
 		go s.handleCon(conn)
 	}
 }
 
-func (s *Server) handleCon(conn net.Conn){
+func (s *Server) handleCon(conn net.Conn) {
 	peer := NewPeer(conn, s.msgCh)
 	s.addPeerCh <- peer
-	slog.Info("new peer connected","remoteAddr",conn.RemoteAddr())
-	if err := peer.readLoop(); err!=nil{
-		slog.Error("peer read error","err", err,"remoteAddr", conn.RemoteAddr())
+	slog.Info("new peer connected", "remoteAddr", conn.RemoteAddr())
+	if err := peer.readLoop(); err != nil {
+		slog.Error("peer read error", "err", err, "remoteAddr", conn.RemoteAddr())
 	}
 
 }
 
 func main() {
-	go func(){
-		server := NewServer(Config{})
+	server := NewServer(Config{})
+
+	go func() {
 		log.Fatal(server.Start())
 	}()
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	time.Sleep(time.Second)
 
-	for i:=0;i<10;i++{
+	for i := 0; i < 10; i++ {
 		client := client.New("localhost:5001")
-		if err := client.Set(context.TODO(),"foo","bar"); err!=nil{
+		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
 			log.Fatal(err)
 		}
 	}
+	fmt.Println(server.kv.data)
 	
+	<-sigCh
+	server.quitCh <- struct{}{}
 	time.Sleep(time.Second)
 }
