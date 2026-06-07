@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Twahaaa/godis/client"
+	"github.com/tidwall/resp"
 )
 
 const defaultListenAddr = ":5001"
@@ -26,7 +27,7 @@ type Server struct {
 	ln        net.Listener
 	addPeerCh chan *Peer
 	quitCh    chan struct{}
-	msgCh     chan []byte
+	msgCh     chan resp.Value
 
 	kv *KV
 }
@@ -40,7 +41,7 @@ func NewServer(cfg Config) *Server {
 		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
-		msgCh:     make(chan []byte),
+		msgCh:     make(chan resp.Value),
 		kv:        NewKV(),
 	}
 }
@@ -70,14 +71,15 @@ func (s *Server) loop() {
 				slog.Error("raw message error", "err:", err)
 			}
 		case <-s.quitCh:
+			fmt.Println("")
 			slog.Info("The Server is being shut down gracefuly")
 			return
 		}
 	}
 }
 
-func (s *Server) handleRawMessage(rawMsg []byte) error {
-	cmd, err := parseCommand(string(rawMsg))
+func (s *Server) handleRawMessage(rawMsg resp.Value) error {
+	cmd, err := parseCommand(rawMsg)
 	if err != nil {
 		return err
 	}
@@ -122,8 +124,8 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	time.Sleep(time.Second)
 
+	client := client.New("localhost:5001")
 	for i := 0; i < 10; i++ {
-		client := client.New("localhost:5001")
 		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
 			log.Fatal(err)
 		}

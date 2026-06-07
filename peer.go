@@ -2,30 +2,29 @@ package main
 
 import (
 	"net"
+
+	"github.com/tidwall/resp"
 )
 
-type Peer struct{
-	conn net.Conn
-	msgCh chan []byte
+type Peer struct {
+	conn  net.Conn
+	msgCh chan resp.Value
 }
 
-func NewPeer(conn net.Conn, msgCh chan []byte) *Peer{
+func NewPeer(conn net.Conn, msgCh chan resp.Value) *Peer {
 	return &Peer{
-		conn: conn,
+		conn:  conn,
 		msgCh: msgCh,
 	}
 }
 
-func (p *Peer) readLoop() error{
-	buff := make([]byte, 1024)
+func (p *Peer) readLoop() error {
+	rd := resp.NewReader(p.conn)
 	for {
-		n, err := p.conn.Read(buff)
-		if err!=nil{
+		v, _, err := rd.ReadValue()
+		if err != nil {
 			return err
 		}
-		msgBuff := make([]byte, n)
-		copy(msgBuff, buff[:n])
-
-		p.msgCh <- msgBuff
+		p.msgCh <- v
 	}
 }

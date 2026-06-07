@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/tidwall/resp"
-	"io"
-	"bytes"
-	"log"
 )
 
 const (
@@ -19,31 +16,20 @@ type SetCommand struct {
 	key, val []byte
 }
 
-func parseCommand(msg string) (Command, error) {
-	rd := resp.NewReader(bytes.NewBufferString(msg))
-	for {
-		v, _, err := rd.ReadValue()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		if v.Type() == resp.Array {
-			for _, value := range v.Array() {
-				switch value.String(){
-					case CommandSet:
-						if len(v.Array())!=3{
-							return nil, fmt.Errorf("invalid number of variables for SET commands")
-						}
-						cmd := SetCommand{
-							key: v.Array()[1].Bytes(),
-							val: v.Array()[2].Bytes(),
-						}
-					return cmd, nil
+func parseCommand(msg resp.Value) (Command, error) {
+	if msg.Type() == resp.Array {
+		for _, value := range msg.Array() {
+			switch value.String() {
+			case CommandSet:
+				if len(msg.Array()) != 3 {
+					return nil, fmt.Errorf("invalid number of variables for SET commands")
 				}
+				return SetCommand{
+					key: msg.Array()[1].Bytes(),
+					val: msg.Array()[2].Bytes(),
+				}, nil
 			}
 		}
 	}
-	return nil, fmt.Errorf("invalid or unknown command recieved: %s", msg)
+	return nil, fmt.Errorf("invalid or unknown command received: %s", msg)
 }
