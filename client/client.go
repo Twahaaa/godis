@@ -40,3 +40,25 @@ func (c *Client) Set(ctx context.Context, key string, val string) error {
 	_, err := c.conn.Write(buf.Bytes())
 	return err
 }
+
+
+func (c *Client) Get(ctx context.Context, key string) (string, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("GET"),
+		resp.StringValue(key),
+	})
+
+	_, err := c.conn.Write(buf.Bytes())
+
+	if err!=nil{
+		return "", err
+	}
+
+	b := make([]byte, 1024)
+	n, err := c.conn.Read(b)
+
+	return string(b[:n]),err
+}

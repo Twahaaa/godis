@@ -21,13 +21,18 @@ type Config struct {
 	ListenAddr string
 }
 
+type Message struct {
+	data resp.Value
+	peer *Peer
+}
+
 type Server struct {
 	Config
 	peers     map[*Peer]bool
 	ln        net.Listener
 	addPeerCh chan *Peer
 	quitCh    chan struct{}
-	msgCh     chan resp.Value
+	msgCh     chan Message
 
 	kv *KV
 }
@@ -41,7 +46,7 @@ func NewServer(cfg Config) *Server {
 		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
-		msgCh:     make(chan resp.Value),
+		msgCh:     make(chan Message),
 		kv:        NewKV(),
 	}
 }
@@ -66,8 +71,8 @@ func (s *Server) loop() {
 		case peer := <-s.addPeerCh:
 			s.peers[peer] = true
 
-		case rawMsg := <-s.msgCh:
-			if err := s.handleRawMessage(rawMsg); err != nil {
+		case msg := <-s.msgCh:
+			if err := s.handleMessage(msg); err != nil {
 				slog.Error("raw message error", "err:", err)
 			}
 		case <-s.quitCh:
@@ -78,8 +83,8 @@ func (s *Server) loop() {
 	}
 }
 
-func (s *Server) handleRawMessage(rawMsg resp.Value) error {
-	cmd, err := parseCommand(rawMsg)
+func (s *Server) handleMessage(msg Message) error {
+	cmd, err := parseCommand(msg.data)
 	if err != nil {
 		return err
 	}
@@ -87,8 +92,19 @@ func (s *Server) handleRawMessage(rawMsg resp.Value) error {
 	case SetCommand:
 		slog.Info("somebody wants to set a key into the hashtable", "key", v.key, "val", v.val)
 		return s.kv.Set(v.key, v.val)
+	
+	case GetCommand:
+		slog.Info("sombody wants to get a key from teh hashtable", "key", v.key)
+		
+		val , ok := s.kv.Get(v.key)
+		if !ok{
+			slog.Error("could not find key", v.key)
+		}
+		_, err := msg.peer.Send(val)
+		if err != nil {
+			slog.Error("failed to send response", "err", err)
+		}
 	}
-
 	return nil
 }
 
@@ -106,7 +122,6 @@ func (s *Server) acceptLoop() error {
 func (s *Server) handleCon(conn net.Conn) {
 	peer := NewPeer(conn, s.msgCh)
 	s.addPeerCh <- peer
-	slog.Info("new peer connected", "remoteAddr", conn.RemoteAddr())
 	if err := peer.readLoop(); err != nil {
 		slog.Error("peer read error", "err", err, "remoteAddr", conn.RemoteAddr())
 	}
@@ -128,6 +143,11 @@ func main() {
 	for i := 0; i < 10; i++ {
 		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
 			log.Fatal(err)
+		}
+		if val, err := client.Get(context.TODO(), fmt.Sprintf("foo_%d", i)); err != nil {
+			log.Fatal(err)
+		} else {
+			fmt.Printf("Retrieved value for foo_%d: %s\n", i, val)
 		}
 	}
 	fmt.Println(server.kv.data)
