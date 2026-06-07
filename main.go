@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"log/slog"
@@ -11,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Twahaaa/godis/client"
 	"github.com/tidwall/resp"
 )
 
@@ -138,19 +136,6 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	time.Sleep(time.Second)
-
-	client := client.New("localhost:5001")
-	for i := 0; i < 10; i++ {
-		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
-			log.Fatal(err)
-		}
-		if val, err := client.Get(context.TODO(), fmt.Sprintf("foo_%d", i)); err != nil {
-			log.Fatal(err)
-		} else {
-			fmt.Printf("Retrieved value for foo_%d: %s\n", i, val)
-		}
-	}
-	fmt.Println(server.kv.data)
 	
 	<-sigCh
 	server.quitCh <- struct{}{}
