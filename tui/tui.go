@@ -3,95 +3,176 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Twahaaa/godis/client"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/superstarryeyes/bit/ansifonts"
 )
 
-// Catppuccin Mocha palette
+// ansiRe strips SGR color codes so rendered font art can be recolored to match the theme.
+var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// loadLogo renders "GoDIS" with bit's ansifonts (8bitfortress) at the given scale and
+// strips its built-in color so we can paint it in the theme's mauve. Returns nil on error.
+func loadLogo(scale float64) []string {
+	font, err := ansifonts.LoadFont("8bitfortress")
+	if err != nil {
+		return nil
+	}
+	opts := ansifonts.DefaultRenderOptions()
+	opts.ScaleFactor = scale
+	var out []string
+	for _, l := range ansifonts.RenderTextWithOptions("GoDIS", font, opts) {
+		out = append(out, strings.TrimRight(ansiRe.ReplaceAllString(l, ""), " "))
+	}
+	return out
+}
+
+// Catppuccin Mocha
 var (
-	overlay = lipgloss.Color("#6c7086")
-	text    = lipgloss.Color("#cdd6f4")
-	mauve   = lipgloss.Color("#cba6f7")
-	pink    = lipgloss.Color("#f38ba8")
-	green   = lipgloss.Color("#a6e3a1")
-	blue    = lipgloss.Color("#89b4fa")
-	teal    = lipgloss.Color("#94e2d5")
-	yellow  = lipgloss.Color("#f9e2af")
+	overlay  = lipgloss.Color("#6c7086")
+	text     = lipgloss.Color("#cdd6f4")
+	mauve    = lipgloss.Color("#cba6f7")
+	pink     = lipgloss.Color("#f38ba8")
+	green    = lipgloss.Color("#a6e3a1")
+	blue     = lipgloss.Color("#89b4fa")
+	teal     = lipgloss.Color("#94e2d5")
+	yellow   = lipgloss.Color("#f9e2af")
+	surface0 = lipgloss.Color("#313244")
+	base     = lipgloss.Color("#11111b") // Catppuccin crust — near-black surface
+	sidebar  = lipgloss.Color("#1c1c22") // a distinct dark gray panel for the sidebar
 )
 
-var (
-	headerBarStyle = lipgloss.NewStyle().
-			Padding(0, 2)
+var screenStyle = lipgloss.NewStyle().Background(base)
 
-	logoTextStyle = lipgloss.NewStyle().
+var (
+	logoStyle = lipgloss.NewStyle().
 			Foreground(mauve).
+			Background(base).
 			Bold(true).
 			Italic(true)
 
-	bylineTextStyle = lipgloss.NewStyle().
+	logoBigStyle = lipgloss.NewStyle().
+			Foreground(mauve).
+			Background(base).
+			Bold(true)
+
+	bylineStyle = lipgloss.NewStyle().
 			Foreground(overlay).
+			Background(base).
 			Italic(true)
-
-	subtitleTextStyle = lipgloss.NewStyle().
-				Foreground(overlay)
-
-	historyBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(mauve).
-			Padding(0, 1)
-
-	inputBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(pink).
-			Padding(0, 1)
 
 	promptStyle = lipgloss.NewStyle().
 			Foreground(mauve).
+			Background(base).
 			Bold(true)
 
 	inputPromptStyle = lipgloss.NewStyle().
 				Foreground(pink).
+				Background(base).
 				Bold(true)
 
 	cmdStyle = lipgloss.NewStyle().
-			Foreground(text)
+			Foreground(text).
+			Background(base)
 
 	successStyle = lipgloss.NewStyle().
 			Foreground(green).
+			Background(base).
 			Bold(true)
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(pink).
+			Background(base).
 			Bold(true)
 
 	keyStyle = lipgloss.NewStyle().
 			Foreground(teal).
+			Background(base).
 			Bold(true)
 
 	valStyle = lipgloss.NewStyle().
-			Foreground(blue)
+			Foreground(blue).
+			Background(base)
 
 	dimStyle = lipgloss.NewStyle().
 			Foreground(overlay).
+			Background(base).
 			Italic(true)
 
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(mauve).
+	warningStyle = lipgloss.NewStyle().
+			Foreground(yellow).
+			Background(base)
+
+	boxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(surface0).
+			BorderBackground(base).
+			Background(base).
+			Padding(0, 1)
+
+	sidebarBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(surface0).
+				BorderBackground(sidebar).
+				Background(sidebar)
+
+	sectionStyle = lipgloss.NewStyle().
+			Foreground(text).
+			Background(base).
 			Bold(true)
 
-	helpDescStyle = lipgloss.NewStyle().
-			Foreground(overlay)
+	modalBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(overlay).
+			BorderBackground(base).
+			Background(base).
+			Padding(1, 2)
 
-	helpBarStyle = lipgloss.NewStyle().
-			Padding(0, 2)
-
-	warningStyle = lipgloss.NewStyle().
-			Foreground(yellow)
+	hintStyle    = lipgloss.NewStyle().Foreground(overlay).Background(base)
+	hintKeyStyle = lipgloss.NewStyle().Foreground(mauve).Background(base)
 )
+
+// palette
+
+type paletteEntry struct {
+	name  string
+	usage string
+	desc  string
+}
+
+var palette = []paletteEntry{
+	{"SET", "SET <key> <value> [ttl]", "store a value, ttl in seconds"},
+	{"GET", "GET <key>", "retrieve a value"},
+	{"DEL", "DEL <key>", "delete a key"},
+	{"EXISTS", "EXISTS <key>", "check if a key exists"},
+	{"TTL", "TTL <key>", "time remaining on a key"},
+	{"EXPIRE", "EXPIRE <key> <seconds>", "set or update expiry on a key"},
+	{"KEYS", "KEYS", "list all keys"},
+	{"CLEAR", "CLEAR", "clear the screen"},
+}
+
+func filteredPalette(search string) []paletteEntry {
+	if search == "" {
+		return palette
+	}
+	upper := strings.ToUpper(search)
+	var result []paletteEntry
+	for _, e := range palette {
+		if strings.Contains(strings.ToUpper(e.name), upper) ||
+			strings.Contains(strings.ToUpper(e.usage), upper) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// model
 
 type historyEntry struct {
 	command  string
@@ -104,25 +185,36 @@ type responseMsg struct {
 	isError  bool
 }
 
+type clearMsg struct{}
+
 type Model struct {
-	client     *client.Client
-	input      string
-	history    []historyEntry
-	historyIdx int // -1 = not browsing history
-	width      int
-	height     int
+	client      *client.Client
+	addr        string
+	logo        []string
+	logoSmall   []string
+	input       string
+	history     []historyEntry
+	historyIdx  int
+	width       int
+	height      int
+	showModal   bool
+	modalSearch string
+	modalIdx    int
 }
 
 func New(addr string) Model {
 	return Model{
 		client:     client.New(addr),
+		addr:       addr,
+		logo:       loadLogo(1.0),
+		logoSmall:  loadLogo(0.5),
 		history:    []historyEntry{},
 		historyIdx: -1,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.ClearScreen
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -132,65 +224,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
-			return m, tea.Quit
-
-		case tea.KeyEnter:
-			if m.input == "" {
-				return m, nil
-			}
-			cmd := m.input
-			m.input = ""
-			m.historyIdx = -1
-			return m, m.handleCommand(cmd)
-
-		case tea.KeyBackspace:
-			if len(m.input) > 0 {
-				m.input = m.input[:len(m.input)-1]
-			}
-
-		// Ctrl+Backspace — delete last word
-		case tea.KeyCtrlH:
-			if len(m.input) > 0 {
-				trimmed := strings.TrimRight(m.input, " ")
-				idx := strings.LastIndex(trimmed, " ")
-				if idx == -1 {
-					m.input = ""
-				} else {
-					m.input = m.input[:idx+1]
-				}
-			}
-
-		// Ctrl+L — clear screen
-		case tea.KeyCtrlL:
-			m.history = []historyEntry{}
-			m.historyIdx = -1
-
-		// ↑ — previous command in history
-		case tea.KeyUp:
-			if len(m.history) > 0 && m.historyIdx < len(m.history)-1 {
-				m.historyIdx++
-				m.input = m.history[len(m.history)-1-m.historyIdx].command
-			}
-
-		// ↓ — next command in history
-		case tea.KeyDown:
-			if m.historyIdx > 0 {
-				m.historyIdx--
-				m.input = m.history[len(m.history)-1-m.historyIdx].command
-			} else if m.historyIdx == 0 {
-				m.historyIdx = -1
-				m.input = ""
-			}
-
-		// Tab — complete command name
-		case tea.KeyTab:
-			m.input = tabComplete(m.input)
-
-		default:
-			m.input += msg.String()
+		if m.showModal {
+			return m.updateModal(msg)
 		}
+		return m.updateMain(msg)
+
+	case clearMsg:
+		m.history = []historyEntry{}
 
 	case responseMsg:
 		if len(m.history) > 0 {
@@ -198,6 +238,120 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			last.response = msg.response
 			last.isError = msg.isError
 		}
+	}
+
+	return m, nil
+}
+
+func (m Model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	filtered := filteredPalette(m.modalSearch)
+
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlP:
+		m.showModal = false
+		m.modalSearch = ""
+		m.modalIdx = 0
+
+	case tea.KeyEnter:
+		if len(filtered) > 0 {
+			idx := m.modalIdx
+			if idx >= len(filtered) {
+				idx = len(filtered) - 1
+			}
+			m.input = filtered[idx].name + " "
+		}
+		m.showModal = false
+		m.modalSearch = ""
+		m.modalIdx = 0
+
+	case tea.KeyUp:
+		if m.modalIdx > 0 {
+			m.modalIdx--
+		}
+
+	case tea.KeyDown:
+		if m.modalIdx < len(filtered)-1 {
+			m.modalIdx++
+		}
+
+	case tea.KeyBackspace:
+		if len(m.modalSearch) > 0 {
+			m.modalSearch = m.modalSearch[:len(m.modalSearch)-1]
+			m.modalIdx = 0
+		}
+
+	default:
+		m.modalSearch += msg.String()
+		m.modalIdx = 0
+	}
+
+	return m, nil
+}
+
+func (m Model) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC, tea.KeyEsc:
+		return m, tea.Quit
+
+	case tea.KeyCtrlP:
+		m.showModal = true
+		m.modalSearch = ""
+		m.modalIdx = 0
+
+	case tea.KeyEnter:
+		if m.input == "" {
+			return m, nil
+		}
+		input := m.input
+		m.input = ""
+		m.historyIdx = -1
+		// handle CLEAR here so it can modify model state directly
+		if strings.ToUpper(strings.TrimSpace(input)) == "CLEAR" {
+			m.history = []historyEntry{}
+			return m, nil
+		}
+		return m, m.handleCommand(input)
+
+	case tea.KeyBackspace:
+		if len(m.input) > 0 {
+			m.input = m.input[:len(m.input)-1]
+		}
+
+	case tea.KeyCtrlH:
+		if len(m.input) > 0 {
+			trimmed := strings.TrimRight(m.input, " ")
+			idx := strings.LastIndex(trimmed, " ")
+			if idx == -1 {
+				m.input = ""
+			} else {
+				m.input = m.input[:idx+1]
+			}
+		}
+
+	case tea.KeyCtrlL:
+		m.history = []historyEntry{}
+		m.historyIdx = -1
+
+	case tea.KeyUp:
+		if len(m.history) > 0 && m.historyIdx < len(m.history)-1 {
+			m.historyIdx++
+			m.input = m.history[len(m.history)-1-m.historyIdx].command
+		}
+
+	case tea.KeyDown:
+		if m.historyIdx > 0 {
+			m.historyIdx--
+			m.input = m.history[len(m.history)-1-m.historyIdx].command
+		} else if m.historyIdx == 0 {
+			m.historyIdx = -1
+			m.input = ""
+		}
+
+	case tea.KeyTab:
+		m.input = tabComplete(m.input)
+
+	default:
+		m.input += msg.String()
 	}
 
 	return m, nil
@@ -261,7 +415,10 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 			}
 			ttl, err := m.client.TTL(context.Background(), parts[1])
 			if err != nil {
-				return responseMsg{response: fmt.Sprintf("%s  %s", keyStyle.Render(parts[1]), dimStyle.Render(err.Error())), isError: true}
+				return responseMsg{
+					response: fmt.Sprintf("%s  %s", keyStyle.Render(parts[1]), dimStyle.Render(err.Error())),
+					isError:  true,
+				}
 			}
 			return responseMsg{
 				response: fmt.Sprintf("%s  %s",
@@ -334,33 +491,15 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 			}
 			return responseMsg{response: strings.Join(lines, "\n")}
 
-		case "CLEAR":
-			m.history = []historyEntry{}
-			return responseMsg{response: ""}
-
 		case "?", "HELP", "/HELP":
-			return responseMsg{
-				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value> [ttl]") + dimStyle.Render("  store a value, ttl in seconds") + "\n" +
-					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
-					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
-					"  " + keyStyle.Render("EXISTS") + valStyle.Render(" <key>") + dimStyle.Render("         check if a key exists") + "\n" +
-					"  " + keyStyle.Render("TTL") + valStyle.Render(" <key>") + dimStyle.Render("            time remaining on a key") + "\n" +
-					"  " + keyStyle.Render("EXPIRE") + valStyle.Render(" <key> <seconds>") + dimStyle.Render(" set expiry on a key") + "\n" +
-					"  " + keyStyle.Render("KEYS") + dimStyle.Render("                   list all keys") + "\n" +
-					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
-					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
-					"  " + keyStyle.Render("Tab") + dimStyle.Render("                   autocomplete command") + "\n" +
-					"  " + keyStyle.Render("Ctrl+L") + dimStyle.Render("                clear screen") + "\n" +
-					"  " + keyStyle.Render("Ctrl+Backspace") + dimStyle.Render("        delete last word") + "\n" +
-					"  " + keyStyle.Render("ESC") + dimStyle.Render("                   quit"),
-			}
+			return responseMsg{response: dimStyle.Render("press ctrl+p to see all commands")}
 
 		case "QUIT", "EXIT":
 			return tea.Quit()
 
 		default:
 			return responseMsg{
-				response: fmt.Sprintf("unknown command %s — try SET or GET",
+				response: fmt.Sprintf("unknown command %s — press ctrl+p for help",
 					warningStyle.Render("'"+parts[0]+"'")),
 				isError: true,
 			}
@@ -373,88 +512,298 @@ func (m Model) View() string {
 		return ""
 	}
 
-	innerWidth := m.width - 6
+	if m.showModal {
+		return viewModal(m)
+	}
 
-	// header bar — full width surface background
-	logoText := logoTextStyle.Render("GoDIS")
-	byText := bylineTextStyle.Render("  by TWAHaaa  ")
-	subtitleText := subtitleTextStyle.Render("")
-	rightText := subtitleTextStyle.Render("")
+	// Two columns: a main pane and a right sidebar. Below 80 cols the sidebar
+	// is dropped so narrow terminals keep a usable single-column layout.
+	sideW := 30
+	if m.width < 80 {
+		sideW = 0
+	}
+	mainW := m.width - sideW
 
-	leftSide := lipgloss.JoinHorizontal(lipgloss.Center, logoText, byText, subtitleText)
-	gap := strings.Repeat(" ", max(0, m.width-lipgloss.Width(leftSide)-lipgloss.Width(rightText)-4))
-	headerContent := leftSide + gap + rightText
-	header := headerBarStyle.Width(m.width).Render(headerContent)
+	content := m.viewMain(mainW)
+	if sideW > 0 {
+		content = lipgloss.JoinHorizontal(lipgloss.Top, content, m.viewSidebar(sideW))
+	}
 
-	// history box
+	return screenStyle.Width(m.width).Height(m.height).
+		MaxWidth(m.width).MaxHeight(m.height).Render(content)
+}
+
+// viewMain renders the conversation pane as exactly m.height rows, each colW wide.
+func (m Model) viewMain(colW int) string {
+	rowStyle := lipgloss.NewStyle().Width(colW).MaxWidth(colW).MaxHeight(1).Background(base)
+	blank := rowStyle.Render("")
+
+	// history — flattened to visual rows so multi-line / wrapping responses
+	// are counted (and clamped) correctly and never overflow the screen.
 	var lines []string
-	for _, entry := range m.history {
-		lines = append(lines,
-			promptStyle.Render("❯ ")+cmdStyle.Render(entry.command),
-		)
+	for ei, entry := range m.history {
+		if ei > 0 {
+			lines = append(lines, "") // blank line between entries
+		}
+		lines = append(lines, "  "+promptStyle.Render("❯ ")+cmdStyle.Render(entry.command))
 		if entry.response != "" {
+			mark := successStyle.Render("✓")
 			if entry.isError {
-				lines = append(lines, cmdStyle.Render("  ")+errorStyle.Render("✗")+" "+entry.response)
-			} else {
-				lines = append(lines, cmdStyle.Render("  ")+successStyle.Render("✓")+" "+entry.response)
+				mark = errorStyle.Render("✗")
+			}
+			for i, sub := range strings.Split(entry.response, "\n") {
+				if i == 0 {
+					lines = append(lines, "    "+mark+"  "+sub)
+				} else {
+					lines = append(lines, "       "+sub)
+				}
 			}
 		}
 	}
+
+	// input box — rounded border, pinned to the bottom of the pane.
+	// total box width = boxW + 2 (padding) + 2 (border); +2 left margin +2 right = colW.
+	boxW := colW - 8
+	if boxW < 8 {
+		boxW = 8
+	}
+	cursor := lipgloss.NewStyle().Foreground(pink).Background(base).Render("█")
+	box := boxStyle.Width(boxW).Render(inputPromptStyle.Render("❯ ") + cmdStyle.Render(m.input) + cursor)
+	var boxRows []string
+	for _, l := range strings.Split(box, "\n") {
+		boxRows = append(boxRows, rowStyle.Render("  "+l))
+	}
+
+	// status line under the box
+	status := lipgloss.NewStyle().Width(colW).MaxWidth(colW).MaxHeight(1).Background(base).
+		Align(lipgloss.Right).PaddingRight(3).
+		Render(hintKeyStyle.Render("ctrl+p") + hintStyle.Render(" commands"))
+
+	// The middle area lives between the top margin and the input box:
+	// topMargin(1) + area + box + status(1) + bottomMargin(1) = m.height
+	areaH := m.height - len(boxRows) - 3
+	if areaH < 1 {
+		areaH = 1
+	}
+
+	var area []string
 	if len(lines) == 0 {
-		lines = append(lines,
-			dimStyle.Render("no commands yet — try ")+
-				keyStyle.Render("SET foo bar")+
-				dimStyle.Render(" or ")+
-				keyStyle.Render("GET foo"),
-		)
+		area = m.emptyState(colW, areaH, rowStyle, blank)
+	} else {
+		if len(lines) > areaH {
+			lines = lines[len(lines)-areaH:]
+		}
+		for _, l := range lines {
+			area = append(area, rowStyle.Render(l))
+		}
+		for len(area) < areaH {
+			area = append(area, blank)
+		}
 	}
 
-	innerHeight := m.height - 7
-	if innerHeight < 1 {
-		innerHeight = 1
+	rows := make([]string, 0, m.height)
+	rows = append(rows, blank)
+	rows = append(rows, area...)
+	rows = append(rows, boxRows...)
+	rows = append(rows, status, blank)
+
+	return strings.Join(rows, "\n")
+}
+
+// emptyState renders the centered "GoDIS" logo (bit ansifonts) into an areaH-tall
+// block, falling back to a one-line hint when the logo can't fit.
+func (m Model) emptyState(colW, areaH int, rowStyle lipgloss.Style, blank string) []string {
+	center := func(s string) string {
+		pad := (colW - lipgloss.Width(s)) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		return rowStyle.Render(strings.Repeat(" ", pad) + s)
 	}
-	if len(lines) > innerHeight {
-		lines = lines[len(lines)-innerHeight:]
+
+	logoW := 0
+	for _, l := range m.logo {
+		if w := lipgloss.Width(l); w > logoW {
+			logoW = w
+		}
 	}
 
-	historyBox := historyBoxStyle.
-		Width(innerWidth).
-		Height(innerHeight).
-		Render(strings.Join(lines, "\n"))
+	var block []string
+	if len(m.logo) > 0 && colW >= logoW+2 && areaH >= len(m.logo)+2 {
+		for _, l := range m.logo {
+			block = append(block, center(logoBigStyle.Render(l)))
+		}
+		block = append(block, blank)
+		block = append(block, center(dimStyle.Render("type a command  ·  ctrl+p for all")))
+	} else {
+		block = append(block, center(dimStyle.Render("no commands yet — ctrl+p for all")))
+	}
 
-	// input box
-	cursor := lipgloss.NewStyle().Foreground(pink).Render("█")
-	inputBox := inputBoxStyle.Width(innerWidth).
-		Render(inputPromptStyle.Render("❯ ") + cmdStyle.Render(m.input) + cursor)
+	top := (areaH - len(block)) / 2
+	if top < 0 {
+		top = 0
+	}
+	rows := make([]string, 0, areaH)
+	for i := 0; i < top; i++ {
+		rows = append(rows, blank)
+	}
+	rows = append(rows, block...)
+	for len(rows) < areaH {
+		rows = append(rows, blank)
+	}
+	if len(rows) > areaH {
+		rows = rows[:areaH]
+	}
+	return rows
+}
 
-	// help bar
-	help := helpBarStyle.Width(m.width).Render(
-		helpKeyStyle.Render("SET")+" "+helpDescStyle.Render("key val")+"   "+
-			helpKeyStyle.Render("GET")+" "+helpDescStyle.Render("key")+"   "+
-			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
-			helpKeyStyle.Render("EXISTS")+" "+helpDescStyle.Render("key")+"   "+
-			helpKeyStyle.Render("TTL")+" "+helpDescStyle.Render("key")+"   "+
-			helpKeyStyle.Render("EXPIRE")+" "+helpDescStyle.Render("key secs")+"   "+
-			helpKeyStyle.Render("KEYS")+"   "+
-			helpKeyStyle.Render("CLEAR")+"   "+
-			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
-			helpKeyStyle.Render("Tab")+" "+helpDescStyle.Render("complete")+"   "+
-			helpKeyStyle.Render("?")+" "+helpDescStyle.Render("help")+"   "+
-			helpKeyStyle.Render("ESC")+" "+helpDescStyle.Render("quit"),
+// viewSidebar renders the context panel as exactly m.height rows, each colW wide
+// (including its 1-col left border that doubles as the separator).
+func (m Model) viewSidebar(colW int) string {
+	innerW := colW - 1
+	line := func(s string) string {
+		return lipgloss.NewStyle().Width(innerW).MaxWidth(innerW).MaxHeight(1).Background(sidebar).Render(s)
+	}
+	blank := line("")
+
+	// rebuild the text styles on the darker sidebar surface so the text cells
+	// match the sidebar background instead of the lighter main base.
+	logoSt := logoStyle.Background(sidebar)
+	sectionSt := sectionStyle.Background(sidebar)
+	keySt := keyStyle.Background(sidebar)
+	cmdSt := cmdStyle.Background(sidebar)
+	dimSt := dimStyle.Background(sidebar)
+	hkSt := hintKeyStyle.Background(sidebar)
+	hsSt := hintStyle.Background(sidebar)
+
+	commands := len(m.history)
+	errors := 0
+	for _, e := range m.history {
+		if e.isError {
+			errors++
+		}
+	}
+	errVal := cmdSt.Render(strconv.Itoa(errors))
+	if errors > 0 {
+		errVal = errorStyle.Background(sidebar).Render(strconv.Itoa(errors))
+	}
+
+	top := []string{blank}
+	logoW := 0
+	for _, l := range m.logoSmall {
+		if w := lipgloss.Width(l); w > logoW {
+			logoW = w
+		}
+	}
+	if len(m.logoSmall) > 0 && logoW <= innerW-1 {
+		logoSmallSt := logoBigStyle.Background(sidebar)
+		for _, l := range m.logoSmall {
+			top = append(top, line(" "+logoSmallSt.Render(l)))
+		}
+	} else {
+		top = append(top, line(" "+logoSt.Render("GoDIS")))
+	}
+	top = append(top,
+		blank,
+		line(" "+sectionSt.Render("Server")),
+		line(" "+keySt.Render(m.addr)),
+		blank,
+		line(" "+sectionSt.Render("Session")),
+		line(" "+dimSt.Render("commands  ")+cmdSt.Render(strconv.Itoa(commands))),
+		line(" "+dimSt.Render("errors    ")+errVal),
+		blank,
+		line(" "+sectionSt.Render("Shortcuts")),
+		line(" "+hkSt.Render("↑↓")+hsSt.Render(" history")),
+		line(" "+hkSt.Render("tab")+hsSt.Render(" complete")),
+		line(" "+hkSt.Render("ctrl+p")+hsSt.Render(" commands")),
+		line(" "+hkSt.Render("esc")+hsSt.Render(" quit")),
 	)
+	bottom := []string{line(" " + dimSt.Render(shortDir(innerW-2))), blank}
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		historyBox,
-		inputBox,
-		help,
-	)
+	rows := make([]string, 0, m.height)
+	rows = append(rows, top...)
+	for len(rows) < m.height-len(bottom) {
+		rows = append(rows, blank)
+	}
+	rows = append(rows, bottom...)
+	if len(rows) > m.height {
+		rows = rows[:m.height]
+	}
 
-	return lipgloss.Place(
-		m.width, m.height,
-		lipgloss.Left, lipgloss.Top,
-		content,
-	)
+	return sidebarBorderStyle.Render(strings.Join(rows, "\n"))
+}
+
+// shortDir returns the working directory with $HOME collapsed to ~, truncated to max cells.
+func shortDir(max int) string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(dir, home) {
+		dir = "~" + dir[len(home):]
+	}
+	if max > 1 && lipgloss.Width(dir) > max {
+		dir = "…" + dir[lipgloss.Width(dir)-max+1:]
+	}
+	return dir
+}
+
+func viewModal(m Model) string {
+	modalWidth := 60
+	if modalWidth > m.width-4 {
+		modalWidth = m.width - 4
+	}
+
+	filtered := filteredPalette(m.modalSearch)
+
+	idx := m.modalIdx
+	if len(filtered) > 0 && idx >= len(filtered) {
+		idx = len(filtered) - 1
+	}
+
+	// header line
+	commandsLabel := lipgloss.NewStyle().Foreground(text).Background(base).Bold(true).Render("Commands")
+	escLabel := dimStyle.Render("esc")
+	gap := lipgloss.NewStyle().Background(base).Render(strings.Repeat(" ", max(0, modalWidth-lipgloss.Width(commandsLabel)-lipgloss.Width(escLabel))))
+	headerLine := commandsLabel + gap + escLabel
+
+	// search line
+	cursor := lipgloss.NewStyle().Foreground(mauve).Background(base).Render("█")
+	searchLine := dimStyle.Render("> ") + cmdStyle.Render(m.modalSearch) + cursor
+
+	var lines []string
+	lines = append(lines, headerLine)
+	lines = append(lines, "")
+	lines = append(lines, searchLine)
+	lines = append(lines, "")
+
+	if len(filtered) == 0 {
+		lines = append(lines, "  "+dimStyle.Render("no commands match"))
+	}
+
+	bar := lipgloss.NewStyle().Foreground(mauve).Background(base).Render("▎ ")
+	gapPrefix := lipgloss.NewStyle().Background(base).Render("  ")
+	usageSel := lipgloss.NewStyle().Foreground(mauve).Background(base).Bold(true)
+	usageOff := lipgloss.NewStyle().Foreground(overlay).Background(base)
+	for i, entry := range filtered {
+		if i == idx {
+			lines = append(lines, bar+usageSel.Render(entry.usage))
+			lines = append(lines, bar+dimStyle.Render(entry.desc))
+		} else {
+			lines = append(lines, gapPrefix+usageOff.Render(entry.usage))
+			lines = append(lines, gapPrefix+dimStyle.Render(entry.desc))
+		}
+		if i < len(filtered)-1 {
+			lines = append(lines, "")
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	modal := modalBoxStyle.Width(modalWidth).Render(content)
+
+	placed := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal,
+		lipgloss.WithWhitespaceBackground(base))
+	return lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.height).Render(placed)
 }
 
 func tabComplete(input string) string {
@@ -462,7 +811,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "TTL ", "EXPIRE ", "KEYS", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "TTL ", "EXPIRE ", "KEYS", "CLEAR "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}
