@@ -261,6 +261,19 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				),
 			}
 
+		case "EXISTS":
+			if len(parts) != 2 {
+				return responseMsg{response: "usage: EXISTS <key>", isError: true}
+			}
+			exists, err := m.client.Exists(context.Background(), parts[1])
+			if err != nil {
+				return responseMsg{response: err.Error(), isError: true}
+			}
+			if exists {
+				return responseMsg{response: fmt.Sprintf("%s  %s", keyStyle.Render(parts[1]), successStyle.Render("exists"))}
+			}
+			return responseMsg{response: fmt.Sprintf("%s  %s", keyStyle.Render(parts[1]), dimStyle.Render("does not exist")), isError: true}
+
 		case "KEYS":
 			keys, err := m.client.Keys(context.Background())
 			if err != nil {
@@ -281,6 +294,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value>") + dimStyle.Render("  store a value") + "\n" +
 					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
 					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
+					"  " + keyStyle.Render("EXISTS") + valStyle.Render(" <key>") + dimStyle.Render("         check if a key exists") + "\n" +
 					"  " + keyStyle.Render("KEYS") + dimStyle.Render("                   list all keys") + "\n" +
 					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
 					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
@@ -367,6 +381,7 @@ func (m Model) View() string {
 		helpKeyStyle.Render("SET")+" "+helpDescStyle.Render("key val")+"   "+
 			helpKeyStyle.Render("GET")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
+			helpKeyStyle.Render("EXISTS")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("KEYS")+"   "+
 			helpKeyStyle.Render("CLEAR")+"   "+
 			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
@@ -394,7 +409,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "DEL ", "KEYS", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "KEYS", "CLEAR ", "HELP "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}

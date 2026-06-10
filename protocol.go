@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	CommandSet  string = "SET"
-	CommandGet  string = "GET"
-	CommandDel  string = "DEL"
-	CommandKeys string = "KEYS"
+	CommandSet    string = "SET"
+	CommandGet    string = "GET"
+	CommandDel    string = "DEL"
+	CommandExists string = "EXISTS"
+	CommandKeys   string = "KEYS"
 )
 
 type Command interface {
@@ -26,6 +27,9 @@ type GetCommand struct {
 type DelCommand struct {
 	key []byte
 }
+type ExistsCommand struct {
+	key []byte
+}
 type KeysCommand struct {
 }
 
@@ -35,7 +39,7 @@ func parseCommand(msg resp.Value) (Command, error) {
 			switch value.String() {
 			case CommandSet:
 				if len(msg.Array()) != 3 {
-					return nil, fmt.Errorf("invalid number of variables for SET commands")
+					return nil, fmt.Errorf("invalid number of variables for SET command")
 				}
 				return SetCommand{
 					key: msg.Array()[1].Bytes(),
@@ -44,7 +48,7 @@ func parseCommand(msg resp.Value) (Command, error) {
 
 			case CommandGet:
 				if len(msg.Array()) != 2 {
-					return nil, fmt.Errorf("invalid number of vairables for the GET commands")
+					return nil, fmt.Errorf("invalid number of vairables for the GET command")
 				}
 				return GetCommand{
 					key: msg.Array()[1].Bytes(),
@@ -52,17 +56,26 @@ func parseCommand(msg resp.Value) (Command, error) {
 
 			case CommandDel:
 				if len(msg.Array()) != 2 {
-					return nil, fmt.Errorf("invalid number of varaibles for DEL commands")
+					return nil, fmt.Errorf("invalid number of varaibles for DEL command")
 				}
 				return DelCommand{
 					key: msg.Array()[1].Bytes(),
 				}, nil
 
+			case CommandExists:
+				if len(msg.Array()) != 2 {
+					return nil, fmt.Errorf("invalid number of varibles for EXISTS command")
+				}
+				return ExistsCommand{
+					key: msg.Array()[1].Bytes(),
+				}, nil
+
 			case CommandKeys:
 				if len(msg.Array()) != 2 {
-					return nil, fmt.Errorf("invalid number of variables for the Keys commands")
+					return nil, fmt.Errorf("invalid number of variables for the Keys command")
 				}
 				return KeysCommand{}, nil
+
 			}
 		}
 	}

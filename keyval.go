@@ -39,6 +39,13 @@ func (kv *KV) Del(key []byte) bool {
 	return ok
 }
 
+func (kv *KV) Exists(key []byte) bool {
+	kv.mu.RLock()
+	defer kv.mu.RUnlock()
+	_, ok := kv.data[string(key)]
+	return ok
+}
+
 func (kv *KV) Keys() []string {
 	kv.mu.RLock()
 	defer kv.mu.RUnlock()

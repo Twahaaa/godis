@@ -65,6 +65,27 @@ func (c *Client) Del(ctx context.Context, key string) (bool, error) {
 	return string(b[:n]) == ":1\r\n", nil
 }
 
+func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("EXISTS"),
+		resp.StringValue(key),
+	})
+
+	if _, err := c.conn.Write(buf.Bytes()); err != nil {
+		return false, err
+	}
+
+	b := make([]byte, 8)
+	n, err := c.conn.Read(b)
+	if err != nil {
+		return false, err
+	}
+	return string(b[:n]) == ":1\r\n", nil
+}
+
 func (c *Client) Keys(ctx context.Context) ([]string, error) {
 	buf := &bytes.Buffer{}
 

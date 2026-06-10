@@ -115,13 +115,23 @@ func (s *Server) handleMessage(msg Message) error {
 		}
 		return err
 
+	case ExistsCommand:
+		slog.Info("sombody wants to check if a key exists from the hashtable", "key", v.key)
+		ok := s.kv.Exists(v.key)
+		if ok {
+			_, err = msg.peer.Send([]byte(":1\r\n"))
+		} else {
+			_, err = msg.peer.Send([]byte(":0\r\n"))
+		}
+		return err
+
 	case KeysCommand:
 		slog.Info("sombody wants to get all the keys from the hashtable")
 		keys := s.kv.Keys()
-		if len(keys)==0{
+		if len(keys) == 0 {
 			_, err = msg.peer.Send([]byte("-ERR no keys in the cache\r\n"))
 		} else {
-			_, err = msg.peer.Send([]byte(strings.Join(keys,",")))
+			_, err = msg.peer.Send([]byte(strings.Join(keys, ",")))
 		}
 		return err
 	}
