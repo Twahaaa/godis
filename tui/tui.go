@@ -255,6 +255,21 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				),
 			}
 
+		case "TTL":
+			if len(parts) != 2 {
+				return responseMsg{response: "usage: TTL <key>", isError: true}
+			}
+			ttl, err := m.client.TTL(context.Background(), parts[1])
+			if err != nil {
+				return responseMsg{response: fmt.Sprintf("%s  %s", keyStyle.Render(parts[1]), dimStyle.Render(err.Error())), isError: true}
+			}
+			return responseMsg{
+				response: fmt.Sprintf("%s  %s",
+					keyStyle.Render(parts[1]),
+					valStyle.Render("expires in "+ttl),
+				),
+			}
+
 		case "DEL":
 			if len(parts) != 2 {
 				return responseMsg{response: "usage: DEL <key>", isError: true}
@@ -307,6 +322,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
 					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
 					"  " + keyStyle.Render("EXISTS") + valStyle.Render(" <key>") + dimStyle.Render("         check if a key exists") + "\n" +
+					"  " + keyStyle.Render("TTL") + valStyle.Render(" <key>") + dimStyle.Render("            time remaining on a key") + "\n" +
 					"  " + keyStyle.Render("KEYS") + dimStyle.Render("                   list all keys") + "\n" +
 					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
 					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
@@ -394,6 +410,7 @@ func (m Model) View() string {
 			helpKeyStyle.Render("GET")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("EXISTS")+" "+helpDescStyle.Render("key")+"   "+
+			helpKeyStyle.Render("TTL")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("KEYS")+"   "+
 			helpKeyStyle.Render("CLEAR")+"   "+
 			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
@@ -421,7 +438,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "KEYS", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "TTL ", "KEYS", "CLEAR ", "HELP "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}

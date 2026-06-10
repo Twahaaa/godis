@@ -14,6 +14,7 @@ const (
 	CommandDel    string = "DEL"
 	CommandExists string = "EXISTS"
 	CommandKeys   string = "KEYS"
+	CommandTTL string = "TTL"
 )
 
 type Command interface {
@@ -34,6 +35,10 @@ type ExistsCommand struct {
 	key []byte
 }
 type KeysCommand struct {
+}
+
+type TTLCommand struct {
+	key []byte
 }
 
 func parseTTL(ttl_byte []byte) (time.Duration ,error){
@@ -97,6 +102,15 @@ func parseCommand(msg resp.Value) (Command, error) {
 				}
 				return KeysCommand{}, nil
 
+			
+			case CommandTTL:
+				if len(msg.Array()) != 2 {
+					return nil, fmt.Errorf("invalid number of variables for TTL command")
+				}
+
+				return TTLCommand{
+					key: msg.Array()[1].Bytes(),
+				}, nil
 			}
 		}
 	}

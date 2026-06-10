@@ -91,9 +91,9 @@ func (s *Server) handleMessage(msg Message) error {
 	case SetCommand:
 		slog.Info("somebody wants to set a key into the hashtable", "key", v.key, "val", v.val)
 		var ttl time.Duration
-		if len(v.ttl) > 0{
+		if len(v.ttl) > 0 {
 			ttl, err = parseTTL(v.ttl)
-			if err!=nil{
+			if err != nil {
 				return fmt.Errorf("invalid TTL: %w", err)
 			}
 		}
@@ -136,9 +136,23 @@ func (s *Server) handleMessage(msg Message) error {
 		slog.Info("sombody wants to get all the keys from the hashtable")
 		keys := s.kv.Keys()
 		if len(keys) == 0 {
-			_, err = msg.peer.Send([]byte("-ERR no keys in the cache\r\n"))
+			_, err = msg.peer.Send([]byte("-ERR key doesn't exists\r\n"))
 		} else {
 			_, err = msg.peer.Send([]byte(strings.Join(keys, ",")))
+		}
+		return err
+
+	case TTLCommand:
+		slog.Info("sombody wants to check the expiry of the key")
+		time_left, check := s.kv.TTL(v.key)
+
+		switch check {
+		case -2:
+			_, err = msg.peer.Send([]byte("-ERR key doesn't exists"))
+		case -1:
+			_, err = msg.peer.Send([]byte("-1\r\n"))
+		default:
+			_, err = msg.peer.Send([]byte(time_left.String()))
 		}
 		return err
 	}

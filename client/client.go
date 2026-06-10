@@ -116,6 +116,35 @@ func (c *Client) Keys(ctx context.Context) ([]string, error) {
 	return strings.Split(response, ","), nil
 }
 
+func (c *Client) TTL(ctx context.Context, key string) (string, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("TTL"),
+		resp.StringValue(key),
+	})
+
+	if _, err := c.conn.Write(buf.Bytes()); err != nil {
+		return "", err
+	}
+
+	b := make([]byte, 64)
+	n, err := c.conn.Read(b)
+	if err != nil {
+		return "", err
+	}
+
+	response := strings.TrimSpace(string(b[:n]))
+	if strings.HasPrefix(response, "-ERR") {
+		return "", fmt.Errorf("%s", strings.TrimSpace(response[4:]))
+	}
+	if response == "-1" {
+		return "", fmt.Errorf("no expiry set")
+	}
+	return response, nil
+}
+
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	buf := &bytes.Buffer{}
 

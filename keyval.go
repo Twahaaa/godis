@@ -102,3 +102,29 @@ func (kv *KV) Keys() []string {
 	}
 	return keys
 }
+
+func (kv *KV) TTL(key []byte) (time.Duration, int) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	if exp, ok := kv.expires[string(key)]; ok{
+		if time.Now().After(exp){
+			delete(kv.data, string(key))
+			delete(kv.expires, string(key))
+		}
+	}
+
+	_, ok := kv.data[string(key)]
+
+	if !ok{
+		return 0 ,-2
+	}
+
+	val, ok := kv.expires[string(key)]
+
+	if !ok{
+		return 0,-1
+	}
+
+	return time.Until(val), 0
+}
