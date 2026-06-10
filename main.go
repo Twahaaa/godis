@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -111,6 +112,16 @@ func (s *Server) handleMessage(msg Message) error {
 			_, err = msg.peer.Send([]byte(":1\r\n"))
 		} else {
 			_, err = msg.peer.Send([]byte(":0\r\n"))
+		}
+		return err
+
+	case KeysCommand:
+		slog.Info("sombody wants to get all the keys from the hashtable")
+		keys := s.kv.Keys()
+		if len(keys)==0{
+			_, err = msg.peer.Send([]byte("-ERR no keys in the cache\r\n"))
+		} else {
+			_, err = msg.peer.Send([]byte(strings.Join(keys,",")))
 		}
 		return err
 	}

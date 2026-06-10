@@ -65,6 +65,32 @@ func (c *Client) Del(ctx context.Context, key string) (bool, error) {
 	return string(b[:n]) == ":1\r\n", nil
 }
 
+func (c *Client) Keys(ctx context.Context) ([]string, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("KEYS"),
+		resp.StringValue("*"),
+	})
+
+	if _, err := c.conn.Write(buf.Bytes()); err != nil {
+		return nil, err
+	}
+
+	b := make([]byte, 4096)
+	n, err := c.conn.Read(b)
+	if err != nil {
+		return nil, err
+	}
+
+	response := string(b[:n])
+	if strings.HasPrefix(response, "-ERR") {
+		return nil, fmt.Errorf("%s", strings.TrimSpace(response[4:]))
+	}
+	return strings.Split(response, ","), nil
+}
+
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	buf := &bytes.Buffer{}
 

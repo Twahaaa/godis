@@ -261,6 +261,17 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				),
 			}
 
+		case "KEYS":
+			keys, err := m.client.Keys(context.Background())
+			if err != nil {
+				return responseMsg{response: err.Error(), isError: true}
+			}
+			var lines []string
+			for _, k := range keys {
+				lines = append(lines, keyStyle.Render("• ")+cmdStyle.Render(k))
+			}
+			return responseMsg{response: strings.Join(lines, "\n")}
+
 		case "CLEAR":
 			m.history = []historyEntry{}
 			return responseMsg{response: ""}
@@ -270,6 +281,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value>") + dimStyle.Render("  store a value") + "\n" +
 					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
 					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
+					"  " + keyStyle.Render("KEYS") + dimStyle.Render("                   list all keys") + "\n" +
 					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
 					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
 					"  " + keyStyle.Render("Tab") + dimStyle.Render("                   autocomplete command") + "\n" +
@@ -355,6 +367,7 @@ func (m Model) View() string {
 		helpKeyStyle.Render("SET")+" "+helpDescStyle.Render("key val")+"   "+
 			helpKeyStyle.Render("GET")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
+			helpKeyStyle.Render("KEYS")+"   "+
 			helpKeyStyle.Render("CLEAR")+"   "+
 			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
 			helpKeyStyle.Render("Tab")+" "+helpDescStyle.Render("complete")+"   "+
@@ -381,7 +394,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "DEL ", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "KEYS", "CLEAR ", "HELP "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}

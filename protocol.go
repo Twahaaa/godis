@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	CommandSet string = "SET"
-	CommandGet string = "GET"
-	CommandDel string = "DEL"
+	CommandSet  string = "SET"
+	CommandGet  string = "GET"
+	CommandDel  string = "DEL"
+	CommandKeys string = "KEYS"
 )
 
 type Command interface {
@@ -24,6 +25,8 @@ type GetCommand struct {
 
 type DelCommand struct {
 	key []byte
+}
+type KeysCommand struct {
 }
 
 func parseCommand(msg resp.Value) (Command, error) {
@@ -54,6 +57,12 @@ func parseCommand(msg resp.Value) (Command, error) {
 				return DelCommand{
 					key: msg.Array()[1].Bytes(),
 				}, nil
+
+			case CommandKeys:
+				if len(msg.Array()) != 2 {
+					return nil, fmt.Errorf("invalid number of variables for the Keys commands")
+				}
+				return KeysCommand{}, nil
 			}
 		}
 	}
