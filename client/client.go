@@ -29,15 +29,19 @@ func New(addr string) *Client {
 	}
 }
 
-func (c *Client) Set(ctx context.Context, key string, val string) error {
+func (c *Client) Set(ctx context.Context, key string, val string, ttl ...int) error {
 	buf := &bytes.Buffer{}
 
 	wr := resp.NewWriter(buf)
-	wr.WriteArray([]resp.Value{
+	args := []resp.Value{
 		resp.StringValue("SET"),
 		resp.StringValue(key),
 		resp.StringValue(val),
-	})
+	}
+	if len(ttl) > 0 {
+		args = append(args, resp.StringValue(fmt.Sprintf("%d", ttl[0])))
+	}
+	wr.WriteArray(args)
 
 	_, err := c.conn.Write(buf.Bytes())
 	return err

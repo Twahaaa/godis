@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/tidwall/resp"
 )
 
@@ -17,7 +20,7 @@ type Command interface {
 }
 
 type SetCommand struct {
-	key, val []byte
+	key, val, ttl []byte
 }
 
 type GetCommand struct {
@@ -33,18 +36,36 @@ type ExistsCommand struct {
 type KeysCommand struct {
 }
 
+func parseTTL(ttl_byte []byte) (time.Duration ,error){
+	secs, err := strconv.Atoi(string(ttl_byte))
+
+	if err!=nil{
+		return 0, err
+	}
+
+	ttl := time.Duration(secs) * time.Second
+
+	return ttl, nil
+}
+
 func parseCommand(msg resp.Value) (Command, error) {
 	if msg.Type() == resp.Array {
 		for _, value := range msg.Array() {
 			switch value.String() {
 			case CommandSet:
-				if len(msg.Array()) != 3 {
+				if len(msg.Array()) != 3 && len(msg.Array()) != 4 {
 					return nil, fmt.Errorf("invalid number of variables for SET command")
 				}
-				return SetCommand{
+				cmd := SetCommand{
 					key: msg.Array()[1].Bytes(),
 					val: msg.Array()[2].Bytes(),
-				}, nil
+				}
+
+				if len(msg.Array()) == 4 {
+					cmd.ttl = msg.Array()[3].Bytes()
+				}
+
+				return cmd, nil
 
 			case CommandGet:
 				if len(msg.Array()) != 2 {

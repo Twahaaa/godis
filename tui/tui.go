@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Twahaaa/godis/client"
@@ -213,20 +214,31 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 	return func() tea.Msg {
 		switch strings.ToUpper(parts[0]) {
 		case "SET":
-			if len(parts) != 3 {
-				return responseMsg{response: "usage: SET <key> <value>", isError: true}
+			if len(parts) != 3 && len(parts) != 4 {
+				return responseMsg{response: "usage: SET <key> <value> [ttl]", isError: true}
 			}
-			err := m.client.Set(context.Background(), parts[1], parts[2])
+			var err error
+			if len(parts) == 4 {
+				ttl, convErr := strconv.Atoi(parts[3])
+				if convErr != nil {
+					return responseMsg{response: "TTL must be a number of seconds", isError: true}
+				}
+				err = m.client.Set(context.Background(), parts[1], parts[2], ttl)
+			} else {
+				err = m.client.Set(context.Background(), parts[1], parts[2])
+			}
 			if err != nil {
 				return responseMsg{response: err.Error(), isError: true}
 			}
-			return responseMsg{
-				response: fmt.Sprintf("%s  %s  %s",
-					successStyle.Render("OK"),
-					keyStyle.Render(parts[1]),
-					valStyle.Render("← "+parts[2]),
-				),
+			response := fmt.Sprintf("%s  %s  %s",
+				successStyle.Render("OK"),
+				keyStyle.Render(parts[1]),
+				valStyle.Render("← "+parts[2]),
+			)
+			if len(parts) == 4 {
+				response += dimStyle.Render(fmt.Sprintf("  (expires in %ss)", parts[3]))
 			}
+			return responseMsg{response: response}
 
 		case "GET":
 			if len(parts) != 2 {
@@ -291,7 +303,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 
 		case "?", "HELP", "/HELP":
 			return responseMsg{
-				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value>") + dimStyle.Render("  store a value") + "\n" +
+				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value> [ttl]") + dimStyle.Render("  store a value, ttl in seconds") + "\n" +
 					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
 					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
 					"  " + keyStyle.Render("EXISTS") + valStyle.Render(" <key>") + dimStyle.Render("         check if a key exists") + "\n" +

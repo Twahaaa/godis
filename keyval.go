@@ -1,32 +1,63 @@
 package main
 
 import (
-	"maps"
-	"slices"
 	"sync"
+	"time"
 )
 
+// - TTL foo → returns 7 (seconds remaining), -1 (no expiry set), or -2 (key doesn't exist)
+// - EXPIRE foo 30 → sets or updates the expiry on an already existing key
+
 type KV struct {
-	mu   sync.RWMutex
-	data map[string][]byte
+	mu      sync.RWMutex
+	data    map[string][]byte
+	expires map[string]time.Time
 }
 
 func NewKV() *KV {
-	return &KV{
-		data: map[string][]byte{},
+	kv := &KV{
+		data:    map[string][]byte{},
+		expires: map[string]time.Time{},
 	}
+
+	go func() {
+		for range time.Tick(time.Second * 5) {
+			kv.mu.Lock()
+			for key, value := range kv.expires {
+				if time.Now().After(value) {
+					delete(kv.expires, key)
+					delete(kv.data, key)
+				}
+			}
+			kv.mu.Unlock()
+		}
+	}()
+
+	return kv
 }
 
-func (kv *KV) Set(key []byte, val []byte) error {
+func (kv *KV) Set(key []byte, val []byte, ttl time.Duration) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 	kv.data[string(key)] = []byte(val)
+	if ttl > 0 {
+		kv.expires[string(key)] = time.Now().Add(ttl)
+	} else {
+		delete(kv.expires, string(key))
+	}
 	return nil
 }
 
 func (kv *KV) Get(key []byte) ([]byte, bool) {
-	kv.mu.RLock()
-	defer kv.mu.RUnlock()
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if exp, ok := kv.expires[string(key)]; ok {
+		if time.Now().After(exp) {
+			delete(kv.data, string(key))
+			delete(kv.expires, string(key))
+			return nil, false
+		}
+	}
 	val, ok := kv.data[string(key)]
 	return val, ok
 }
@@ -36,19 +67,38 @@ func (kv *KV) Del(key []byte) bool {
 	defer kv.mu.Unlock()
 	_, ok := kv.data[string(key)]
 	delete(kv.data, string(key))
+	delete(kv.expires, string(key))
 	return ok
 }
 
 func (kv *KV) Exists(key []byte) bool {
-	kv.mu.RLock()
-	defer kv.mu.RUnlock()
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if exp, ok := kv.expires[string(key)]; ok {
+		if time.Now().After(exp) {
+			delete(kv.data, string(key))
+			delete(kv.expires, string(key))
+			return false
+		}
+	}
 	_, ok := kv.data[string(key)]
 	return ok
 }
 
 func (kv *KV) Keys() []string {
-	kv.mu.RLock()
-	defer kv.mu.RUnlock()
-	keys := slices.Collect(maps.Keys(kv.data))
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	var keys[] string
+
+	for key := range kv.data{
+		if exp, ok := kv.expires[string(key)]; ok{
+			if time.Now().After(exp){
+				delete(kv.data, string(key))
+				delete(kv.expires, string(key))
+				continue
+			}
+		}
+		keys = append(keys, key)
+	}
 	return keys
 }

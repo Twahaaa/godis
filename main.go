@@ -90,7 +90,14 @@ func (s *Server) handleMessage(msg Message) error {
 	switch v := cmd.(type) {
 	case SetCommand:
 		slog.Info("somebody wants to set a key into the hashtable", "key", v.key, "val", v.val)
-		return s.kv.Set(v.key, v.val)
+		var ttl time.Duration
+		if len(v.ttl) > 0{
+			ttl, err = parseTTL(v.ttl)
+			if err!=nil{
+				return fmt.Errorf("invalid TTL: %w", err)
+			}
+		}
+		return s.kv.Set(v.key, v.val, ttl)
 
 	case GetCommand:
 		slog.Info("sombody wants to get a key from teh hashtable", "key", v.key)
