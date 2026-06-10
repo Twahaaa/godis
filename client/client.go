@@ -3,8 +3,10 @@ package client
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/tidwall/resp"
 )
@@ -42,6 +44,27 @@ func (c *Client) Set(ctx context.Context, key string, val string) error {
 }
 
 
+func (c *Client) Del(ctx context.Context, key string) (bool, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("DEL"),
+		resp.StringValue(key),
+	})
+
+	if _, err := c.conn.Write(buf.Bytes()); err != nil {
+		return false, err
+	}
+
+	b := make([]byte, 8)
+	n, err := c.conn.Read(b)
+	if err != nil {
+		return false, err
+	}
+	return string(b[:n]) == ":1\r\n", nil
+}
+
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	buf := &bytes.Buffer{}
 
@@ -59,6 +82,13 @@ func (c *Client) Get(ctx context.Context, key string) (string, error) {
 
 	b := make([]byte, 1024)
 	n, err := c.conn.Read(b)
+	if err != nil {
+		return "", err
+	}
 
-	return string(b[:n]),err
+	response := string(b[:n])
+	if strings.HasPrefix(response, "-ERR") {
+		return "", fmt.Errorf("%s", strings.TrimSpace(response[4:]))
+	}
+	return response, nil
 }

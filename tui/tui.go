@@ -243,6 +243,24 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				),
 			}
 
+		case "DEL":
+			if len(parts) != 2 {
+				return responseMsg{response: "usage: DEL <key>", isError: true}
+			}
+			deleted, err := m.client.Del(context.Background(), parts[1])
+			if err != nil {
+				return responseMsg{response: err.Error(), isError: true}
+			}
+			if !deleted {
+				return responseMsg{response: fmt.Sprintf("key %s not found", keyStyle.Render(parts[1])), isError: true}
+			}
+			return responseMsg{
+				response: fmt.Sprintf("%s  %s",
+					successStyle.Render("DEL"),
+					keyStyle.Render(parts[1]),
+				),
+			}
+
 		case "CLEAR":
 			m.history = []historyEntry{}
 			return responseMsg{response: ""}
@@ -251,6 +269,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 			return responseMsg{
 				response: keyStyle.Render("SET") + valStyle.Render(" <key> <value>") + dimStyle.Render("  store a value") + "\n" +
 					"  " + keyStyle.Render("GET") + valStyle.Render(" <key>") + dimStyle.Render("           retrieve a value") + "\n" +
+					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
 					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
 					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
 					"  " + keyStyle.Render("Tab") + dimStyle.Render("                   autocomplete command") + "\n" +
@@ -335,6 +354,7 @@ func (m Model) View() string {
 	help := helpBarStyle.Width(m.width).Render(
 		helpKeyStyle.Render("SET")+" "+helpDescStyle.Render("key val")+"   "+
 			helpKeyStyle.Render("GET")+" "+helpDescStyle.Render("key")+"   "+
+			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("CLEAR")+"   "+
 			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
 			helpKeyStyle.Render("Tab")+" "+helpDescStyle.Render("complete")+"   "+
@@ -361,7 +381,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "CLEAR ", "HELP "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}

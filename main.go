@@ -90,18 +90,29 @@ func (s *Server) handleMessage(msg Message) error {
 	case SetCommand:
 		slog.Info("somebody wants to set a key into the hashtable", "key", v.key, "val", v.val)
 		return s.kv.Set(v.key, v.val)
-	
+
 	case GetCommand:
 		slog.Info("sombody wants to get a key from teh hashtable", "key", v.key)
-		
-		val , ok := s.kv.Get(v.key)
-		if !ok{
-			slog.Error("could not find key", "key", v.key)
+
+		val, ok := s.kv.Get(v.key)
+		if !ok {
+			_, err = msg.peer.Send([]byte("-ERR key not found\r\n"))
+		} else {
+			_, err = msg.peer.Send(val)
 		}
-		_, err := msg.peer.Send(val)
 		if err != nil {
 			slog.Error("failed to send response", "err", err)
 		}
+
+	case DelCommand:
+		slog.Info("sombody wants to delete a record from the hashtable", "key", v.key)
+		ok := s.kv.Del(v.key)
+		if ok {
+			_, err = msg.peer.Send([]byte(":1\r\n"))
+		} else {
+			_, err = msg.peer.Send([]byte(":0\r\n"))
+		}
+		return err
 	}
 	return nil
 }
@@ -136,7 +147,7 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	time.Sleep(time.Second)
-	
+
 	<-sigCh
 	server.quitCh <- struct{}{}
 	time.Sleep(time.Second)

@@ -28,3 +28,11 @@ func (kv *KV) Get(key []byte) ([]byte, bool){
 	val, ok := kv.data[string(key)]
 	return val, ok
 }
+
+func (kv *KV) Del(key []byte) bool{
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	_, ok := kv.data[string(key)]
+	delete(kv.data, string(key))
+	return ok
+}
