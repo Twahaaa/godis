@@ -16,6 +16,9 @@ A Redis clone built from scratch in Go. Implements a TCP server that speaks the 
 |---|---|
 | `SET key value` | Store a value |
 | `GET key` | Retrieve a value |
+| `DEL key` | Delete a key |
+| `EXISTS key` | Check if a key exists |
+| `KEYS *` | List all keys |
 
 ## Getting Started
 
@@ -37,7 +40,7 @@ make cli
 | `Tab` | Autocomplete command |
 | `Ctrl+L` | Clear screen |
 | `Ctrl+Backspace` | Delete last word |
-| `?` or `help` | Show all commands |
+| `?` or `HELP` | Show all commands |
 | `ESC` | Quit |
 
 ## Project Structure
