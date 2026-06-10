@@ -208,6 +208,11 @@ func main() {
 	time.Sleep(time.Second)
 
 	<-sigCh
+
+	if err := server.kv.Save(); err != nil {
+				slog.Error("failed to save data", "err", err)
+	}
+
 	server.quitCh <- struct{}{}
 	time.Sleep(time.Second)
 }
