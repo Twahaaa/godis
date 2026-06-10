@@ -118,7 +118,7 @@ var (
 
 	sidebarBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder(), false, false, false, true).
-				BorderForeground(surface0).
+				BorderForeground(sidebar).
 				BorderBackground(sidebar).
 				Background(sidebar)
 
@@ -136,7 +136,34 @@ var (
 
 	hintStyle    = lipgloss.NewStyle().Foreground(overlay).Background(base)
 	hintKeyStyle = lipgloss.NewStyle().Foreground(mauve).Background(base)
+
+	scrollThumbStyle = lipgloss.NewStyle().Foreground(overlay).Background(base)
+	scrollTrackStyle = lipgloss.NewStyle().Foreground(surface0).Background(base)
 )
+
+// scrollbarCell renders one cell of the history scrollbar for visible row i,
+// given a track of trackH rows over total lines with the window starting at start.
+func scrollbarCell(i, trackH, total, start int) string {
+	thumbLen := trackH * trackH / total
+	if thumbLen < 1 {
+		thumbLen = 1
+	}
+	maxStart := total - trackH // > 0 whenever a scrollbar is shown
+	thumbTop := 0
+	if maxStart > 0 {
+		thumbTop = start * (trackH - thumbLen) / maxStart
+	}
+	if i >= thumbTop && i < thumbTop+thumbLen {
+		return scrollThumbStyle.Render("█")
+	}
+	return scrollTrackStyle.Render("│")
+}
+
+// logoBanner is the "GoDIS" wordmark in a clean outline font, shown in the sidebar.
+const logoBanner = `  ___     ___ ___ ___
+ / __|___|   \_ _/ __|
+| (_ / _ \ |) | |\__ \
+ \___\___/___/___|___/`
 
 // palette
 
@@ -191,12 +218,12 @@ type Model struct {
 	client      *client.Client
 	addr        string
 	logo        []string
-	logoSmall   []string
 	input       string
 	history     []historyEntry
 	historyIdx  int
 	width       int
 	height      int
+	scroll      int // history rows scrolled up from the bottom (0 = latest)
 	showModal   bool
 	modalSearch string
 	modalIdx    int
@@ -207,7 +234,6 @@ func New(addr string) Model {
 		client:     client.New(addr),
 		addr:       addr,
 		logo:       loadLogo(1.0),
-		logoSmall:  loadLogo(0.5),
 		history:    []historyEntry{},
 		historyIdx: -1,
 	}
@@ -215,6 +241,62 @@ func New(addr string) Model {
 
 func (m Model) Init() tea.Cmd {
 	return tea.ClearScreen
+}
+
+// historyLines flattens the command history into individual visual rows,
+// including blank separators between entries. Shared by Update and View so
+// scroll bounds and rendering stay in sync.
+func (m Model) historyLines() []string {
+	var lines []string
+	for ei, entry := range m.history {
+		if ei > 0 {
+			lines = append(lines, "") // blank line between entries
+		}
+		lines = append(lines, "  "+promptStyle.Render("❯ ")+cmdStyle.Render(entry.command))
+		if entry.response != "" {
+			mark := successStyle.Render("✓")
+			if entry.isError {
+				mark = errorStyle.Render("✗")
+			}
+			for i, sub := range strings.Split(entry.response, "\n") {
+				if i == 0 {
+					lines = append(lines, "    "+mark+"  "+sub)
+				} else {
+					lines = append(lines, "       "+sub)
+				}
+			}
+		}
+	}
+	return lines
+}
+
+// historyHeight is the number of visible history rows (the area between the
+// top margin and the input box). The input box is always 3 rows tall.
+func (m Model) historyHeight() int {
+	h := m.height - 6
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// maxScroll is how far up the history can be scrolled.
+func (m Model) maxScroll() int {
+	over := len(m.historyLines()) - m.historyHeight()
+	if over < 0 {
+		return 0
+	}
+	return over
+}
+
+func (m Model) clampScroll(s int) int {
+	if mx := m.maxScroll(); s > mx {
+		s = mx
+	}
+	if s < 0 {
+		s = 0
+	}
+	return s
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -228,6 +310,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateModal(msg)
 		}
 		return m.updateMain(msg)
+
+	case tea.MouseMsg:
+		if !m.showModal {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.scroll = m.clampScroll(m.scroll + 3)
+			case tea.MouseButtonWheelDown:
+				m.scroll = m.clampScroll(m.scroll - 3)
+			}
+		}
 
 	case clearMsg:
 		m.history = []historyEntry{}
@@ -305,12 +397,25 @@ func (m Model) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		input := m.input
 		m.input = ""
 		m.historyIdx = -1
+		m.scroll = 0 // jump back to the latest output
 		// handle CLEAR here so it can modify model state directly
 		if strings.ToUpper(strings.TrimSpace(input)) == "CLEAR" {
 			m.history = []historyEntry{}
 			return m, nil
 		}
 		return m, m.handleCommand(input)
+
+	case tea.KeyPgUp:
+		m.scroll = m.clampScroll(m.scroll + m.historyHeight())
+
+	case tea.KeyPgDown:
+		m.scroll = m.clampScroll(m.scroll - m.historyHeight())
+
+	case tea.KeyCtrlU:
+		m.scroll = m.clampScroll(m.scroll + m.historyHeight()/2)
+
+	case tea.KeyCtrlD:
+		m.scroll = m.clampScroll(m.scroll - m.historyHeight()/2)
 
 	case tea.KeyBackspace:
 		if len(m.input) > 0 {
@@ -331,6 +436,7 @@ func (m Model) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlL:
 		m.history = []historyEntry{}
 		m.historyIdx = -1
+		m.scroll = 0
 
 	case tea.KeyUp:
 		if len(m.history) > 0 && m.historyIdx < len(m.history)-1 {
@@ -540,26 +646,7 @@ func (m Model) viewMain(colW int) string {
 
 	// history — flattened to visual rows so multi-line / wrapping responses
 	// are counted (and clamped) correctly and never overflow the screen.
-	var lines []string
-	for ei, entry := range m.history {
-		if ei > 0 {
-			lines = append(lines, "") // blank line between entries
-		}
-		lines = append(lines, "  "+promptStyle.Render("❯ ")+cmdStyle.Render(entry.command))
-		if entry.response != "" {
-			mark := successStyle.Render("✓")
-			if entry.isError {
-				mark = errorStyle.Render("✗")
-			}
-			for i, sub := range strings.Split(entry.response, "\n") {
-				if i == 0 {
-					lines = append(lines, "    "+mark+"  "+sub)
-				} else {
-					lines = append(lines, "       "+sub)
-				}
-			}
-		}
-	}
+	lines := m.historyLines()
 
 	// input box — rounded border, pinned to the bottom of the pane.
 	// total box width = boxW + 2 (padding) + 2 (border); +2 left margin +2 right = colW.
@@ -590,14 +677,43 @@ func (m Model) viewMain(colW int) string {
 	if len(lines) == 0 {
 		area = m.emptyState(colW, areaH, rowStyle, blank)
 	} else {
-		if len(lines) > areaH {
-			lines = lines[len(lines)-areaH:]
+		total := len(lines)
+		showBar := total > areaH
+
+		// pick the visible window based on the scroll offset (0 = bottom)
+		scroll := m.clampScroll(m.scroll)
+		start := total - areaH - scroll
+		if start < 0 {
+			start = 0
 		}
-		for _, l := range lines {
-			area = append(area, rowStyle.Render(l))
+		end := start + areaH
+		if end > total {
+			end = total
 		}
-		for len(area) < areaH {
-			area = append(area, blank)
+		window := lines[start:end]
+
+		histW := colW
+		if showBar {
+			histW = colW - 1
+		}
+		histRow := lipgloss.NewStyle().Width(histW).MaxWidth(histW).MaxHeight(1).Background(base)
+
+		for i := 0; i < areaH; i++ {
+			row := blank
+			if showBar {
+				row = histRow.Render("")
+			}
+			if i < len(window) {
+				if showBar {
+					row = histRow.Render(window[i])
+				} else {
+					row = rowStyle.Render(window[i])
+				}
+			}
+			if showBar {
+				row += scrollbarCell(i, areaH, total, start)
+			}
+			area = append(area, row)
 		}
 	}
 
@@ -668,7 +784,6 @@ func (m Model) viewSidebar(colW int) string {
 
 	// rebuild the text styles on the darker sidebar surface so the text cells
 	// match the sidebar background instead of the lighter main base.
-	logoSt := logoStyle.Background(sidebar)
 	sectionSt := sectionStyle.Background(sidebar)
 	keySt := keyStyle.Background(sidebar)
 	cmdSt := cmdStyle.Background(sidebar)
@@ -689,19 +804,9 @@ func (m Model) viewSidebar(colW int) string {
 	}
 
 	top := []string{blank}
-	logoW := 0
-	for _, l := range m.logoSmall {
-		if w := lipgloss.Width(l); w > logoW {
-			logoW = w
-		}
-	}
-	if len(m.logoSmall) > 0 && logoW <= innerW-1 {
-		logoSmallSt := logoBigStyle.Background(sidebar)
-		for _, l := range m.logoSmall {
-			top = append(top, line(" "+logoSmallSt.Render(l)))
-		}
-	} else {
-		top = append(top, line(" "+logoSt.Render("GoDIS")))
+	logoSt := logoBigStyle.Background(sidebar)
+	for _, l := range strings.Split(logoBanner, "\n") {
+		top = append(top, line(" "+logoSt.Render(l)))
 	}
 	top = append(top,
 		blank,
@@ -828,7 +933,7 @@ func max(a, b int) int {
 
 func Start(addr string) error {
 	m := New(addr)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
