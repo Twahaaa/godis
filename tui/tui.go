@@ -270,6 +270,28 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 				),
 			}
 
+		case "EXPIRE":
+			if len(parts) != 3 {
+				return responseMsg{response: "usage: EXPIRE <key> <seconds>", isError: true}
+			}
+			ttl, convErr := strconv.Atoi(parts[2])
+			if convErr != nil {
+				return responseMsg{response: "seconds must be a number", isError: true}
+			}
+			ok, err := m.client.Expire(context.Background(), parts[1], ttl)
+			if err != nil {
+				return responseMsg{response: err.Error(), isError: true}
+			}
+			if !ok {
+				return responseMsg{response: fmt.Sprintf("key %s not found", keyStyle.Render(parts[1])), isError: true}
+			}
+			return responseMsg{
+				response: fmt.Sprintf("%s  %s",
+					keyStyle.Render(parts[1]),
+					dimStyle.Render(fmt.Sprintf("expiry set to %ss", parts[2])),
+				),
+			}
+
 		case "DEL":
 			if len(parts) != 2 {
 				return responseMsg{response: "usage: DEL <key>", isError: true}
@@ -323,6 +345,7 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 					"  " + keyStyle.Render("DEL") + valStyle.Render(" <key>") + dimStyle.Render("           delete a key") + "\n" +
 					"  " + keyStyle.Render("EXISTS") + valStyle.Render(" <key>") + dimStyle.Render("         check if a key exists") + "\n" +
 					"  " + keyStyle.Render("TTL") + valStyle.Render(" <key>") + dimStyle.Render("            time remaining on a key") + "\n" +
+					"  " + keyStyle.Render("EXPIRE") + valStyle.Render(" <key> <seconds>") + dimStyle.Render(" set expiry on a key") + "\n" +
 					"  " + keyStyle.Render("KEYS") + dimStyle.Render("                   list all keys") + "\n" +
 					"  " + keyStyle.Render("CLEAR") + dimStyle.Render("                  clear the screen") + "\n" +
 					"  " + keyStyle.Render("↑ ↓") + dimStyle.Render("                  navigate command history") + "\n" +
@@ -411,6 +434,7 @@ func (m Model) View() string {
 			helpKeyStyle.Render("DEL")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("EXISTS")+" "+helpDescStyle.Render("key")+"   "+
 			helpKeyStyle.Render("TTL")+" "+helpDescStyle.Render("key")+"   "+
+			helpKeyStyle.Render("EXPIRE")+" "+helpDescStyle.Render("key secs")+"   "+
 			helpKeyStyle.Render("KEYS")+"   "+
 			helpKeyStyle.Render("CLEAR")+"   "+
 			helpKeyStyle.Render("↑↓")+" "+helpDescStyle.Render("history")+"   "+
@@ -438,7 +462,7 @@ func tabComplete(input string) string {
 		return input
 	}
 	upper := strings.ToUpper(input)
-	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "TTL ", "KEYS", "CLEAR ", "HELP "} {
+	for _, cmd := range []string{"SET ", "GET ", "DEL ", "EXISTS ", "TTL ", "EXPIRE ", "KEYS", "CLEAR ", "HELP "} {
 		if strings.HasPrefix(cmd, upper) {
 			return cmd
 		}

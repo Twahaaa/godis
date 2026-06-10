@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// - TTL foo → returns 7 (seconds remaining), -1 (no expiry set), or -2 (key doesn't exist)
-// - EXPIRE foo 30 → sets or updates the expiry on an already existing key
-
 type KV struct {
 	mu      sync.RWMutex
 	data    map[string][]byte
@@ -127,4 +124,25 @@ func (kv *KV) TTL(key []byte) (time.Duration, int) {
 	}
 
 	return time.Until(val), 0
+}
+
+func (kv *KV) Expire(key []byte,ttl time.Duration) bool{
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if exp, ok := kv.expires[string(key)]; ok{
+		if time.Now().After(exp){
+			delete(kv.data, string(key))
+			delete(kv.expires, string(key))
+		}
+	}
+
+	_, ok := kv.data[string(key)]
+
+	if !ok{
+		return false
+	}
+
+	kv.expires[string(key)] = time.Now().Add(ttl)
+
+	return true
 }

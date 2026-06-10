@@ -15,6 +15,7 @@ const (
 	CommandExists string = "EXISTS"
 	CommandKeys   string = "KEYS"
 	CommandTTL string = "TTL"
+	CommandExpire string = "EXPIRE"
 )
 
 type Command interface {
@@ -39,6 +40,10 @@ type KeysCommand struct {
 
 type TTLCommand struct {
 	key []byte
+}
+
+type ExpireCommand struct{
+	key, ttl []byte
 }
 
 func parseTTL(ttl_byte []byte) (time.Duration ,error){
@@ -111,7 +116,18 @@ func parseCommand(msg resp.Value) (Command, error) {
 				return TTLCommand{
 					key: msg.Array()[1].Bytes(),
 				}, nil
+
+			case CommandExpire:
+				if len(msg.Array()) != 3{
+					return nil, fmt.Errorf("invalid number of variables for EXPIRE command")
+				}
+
+				return ExpireCommand{
+					key: msg.Array()[1].Bytes(),
+					ttl: msg.Array()[2].Bytes(),
+				}, nil
 			}
+
 		}
 	}
 	return nil, fmt.Errorf("invalid or unknown command received: %s", msg)

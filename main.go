@@ -155,6 +155,23 @@ func (s *Server) handleMessage(msg Message) error {
 			_, err = msg.peer.Send([]byte(time_left.String()))
 		}
 		return err
+
+	case ExpireCommand:
+		slog.Info("somebody wants to set expiry on a key")
+		ttl, err := parseTTL(v.ttl)
+
+		if err != nil {
+			return fmt.Errorf("invalid TTL: %w", err)
+		}
+
+		ok := s.kv.Expire(v.key, ttl)
+		if ok {
+			_, err = msg.peer.Send([]byte(":1\r\n"))
+		} else {
+			_, err = msg.peer.Send([]byte(":0\r\n"))
+		}
+		return err
+
 	}
 	return nil
 }

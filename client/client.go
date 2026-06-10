@@ -145,6 +145,28 @@ func (c *Client) TTL(ctx context.Context, key string) (string, error) {
 	return response, nil
 }
 
+func (c *Client) Expire(ctx context.Context, key string, ttl int) (bool, error) {
+	buf := &bytes.Buffer{}
+
+	wr := resp.NewWriter(buf)
+	wr.WriteArray([]resp.Value{
+		resp.StringValue("EXPIRE"),
+		resp.StringValue(key),
+		resp.StringValue(fmt.Sprintf("%d", ttl)),
+	})
+
+	if _, err := c.conn.Write(buf.Bytes()); err != nil {
+		return false, err
+	}
+
+	b := make([]byte, 8)
+	n, err := c.conn.Read(b)
+	if err != nil {
+		return false, err
+	}
+	return string(b[:n]) == ":1\r\n", nil
+}
+
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	buf := &bytes.Buffer{}
 
